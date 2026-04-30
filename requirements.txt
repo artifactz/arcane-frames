@@ -1,0 +1,10 @@
+numpy
+opencv-python>=4.3
+opencv-contrib-python
+tqdm
+Pillow
+diffusers
+transformers
+accelerate
+scipy
+safetensors

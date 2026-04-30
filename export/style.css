@@ -1,0 +1,75 @@
+body, html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #000;
+}
+
+.main-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.taskbar-panel {
+    height: 48px; 
+    background-color: #333;
+}
+
+.slideshow-container {
+    /* width: 100%;
+    height: 100%; */
+    flex-grow: 1;
+    position: relative;
+    /* display: flex; */
+    justify-content: center;
+    align-items: center;
+}
+
+.slide-image {
+    position: absolute;
+    top: 0;
+    left: 0;
+
+    /* Full coverage, cropping applied */
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+
+    object-fit: cover;
+    object-position: center;
+
+    transition: none;
+}
+
+.slide-image.current {
+    z-index: 1;
+    opacity: 1;
+}
+
+.slide-image.next {
+    z-index: 2;
+    opacity: 0; 
+}
+
+.slide-image.visible {
+    opacity: 1;
+    transition: opacity 1.0s ease-in-out;
+}
+
+.slide-image.visible-slow {
+    opacity: 1;
+    transition: opacity 2.0s ease-in-out;
+}
+
+.slide-image.visible-fast {
+    opacity: 1;
+    transition: opacity 0.5s ease-in-out;
+}
+
+.slide-image.visible-veryfast {
+    opacity: 1;
+    transition: opacity 0.25s ease-in-out;
+}
