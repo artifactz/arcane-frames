@@ -25,7 +25,7 @@ def extract_indices(filename: str, min_cut_distance=24) -> set[int]:
     # Best frame per I frame interval
     return {max(range(i1, i2), key=lambda i: frame_scores[i]) for i1, i2 in zip(i_indices, i_indices[1:])}
 
-def extract_images(filename: str, out_folder: str, upscaler: Upscaler, frame_indices: set):
+def extract_images(filename: str, out_folder: str, upscaler: Upscaler, frame_indices: Iterable):
     """
     Extract frames from the given video file and saves them as PNG images in the specified output folder.
     """
@@ -33,18 +33,12 @@ def extract_images(filename: str, out_folder: str, upscaler: Upscaler, frame_ind
     video = db.get_video(filename)
     os.makedirs(out_folder, exist_ok=True)
 
-    last_frame_index = max(frame_indices)
-    with ffmpeg.FfmpegVideoReader(filename, pix_fmt=upscaler.pix_fmt, crop=video.crop) as reader:
-        for i, frame in enumerate(reader):
-            if i in frame_indices:
-                out_path = f"{out_folder}/{suffix}{i:06d}.png"
-                # print(f"Extracting frame {i} to {out_path}...")
-                upscaled = upscaler.upscale(frame)
-                upscaled_1080p = _resample_1080p(upscaled)
-                upscaled_1080p.save(out_path)
-
-                if i == last_frame_index:
-                    break
+    for i, frame in ffmpeg.iter_frames(frame_indices, filename, pix_fmt=upscaler.pix_fmt, crop=video.crop):
+        out_path = f"{out_folder}/{suffix}{i:06d}.png"
+        # print(f"Extracting frame {i} to {out_path}...")
+        upscaled = upscaler.upscale(frame)
+        upscaled_1080p = _resample_1080p(upscaled)
+        upscaled_1080p.save(out_path)
 
 def _resample_1080p(array_or_image: np.ndarray | Image.Image) -> Image.Image:
     img = array_or_image if isinstance(array_or_image, Image.Image) else Image.fromarray(array_or_image)

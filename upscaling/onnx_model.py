@@ -2,13 +2,13 @@ from typing import Optional
 import os, requests
 from PIL import Image
 import numpy as np
-import cv2
 
 # pip install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-13/pypi/simple/
 import onnxruntime
 
-from .upscaler import RgbUpscaler, YuvUpscaler
 from datatypes import Frame
+from .upscaler import RgbUpscaler, YuvUpscaler
+from color_conversion import yuv_to_rgb
 
 
 class OnnxModelUpscaler(RgbUpscaler):
@@ -50,10 +50,7 @@ class OnnxModelYuvUpscaler(YuvUpscaler):
         # Upscale U and V, which are at half resolution
         upscaled_u = _upscale_array_1channel(self.ort_session_x2, frame.u)
         upscaled_v = _upscale_array_1channel(self.ort_session_x2, frame.v)
-
-        # Combine to RGB
-        yuv_array = cv2.merge((frame.y, upscaled_u, upscaled_v))
-        rgb_array = cv2.cvtColor(yuv_array, cv2.COLOR_YUV2RGB)
+        rgb_array = yuv_to_rgb(frame.color_space, frame.y, upscaled_u, upscaled_v)
 
         if self.resample_before_2nd_upscale:
             rgb_array = _resample(rgb_array, self.resample_before_2nd_upscale)

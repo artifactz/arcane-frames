@@ -15,4 +15,4 @@ class RgbUpscaler(Upscaler):
     pix_fmt = "rgb24"
 
 class YuvUpscaler(Upscaler):
-    pix_fmt = "yuv420p"
+    pix_fmt = "yuvj420p"

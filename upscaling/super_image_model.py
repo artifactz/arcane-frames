@@ -5,6 +5,7 @@ from super_image import MsrnModel, EdsrModel, DrlnModel, ImageLoader, PreTrained
 from PIL import Image
 from .upscaler import RgbUpscaler, YuvUpscaler
 from datatypes import Frame
+from color_conversion import yuv_to_rgb
 
 
 class SuperImageModelUpscaler(RgbUpscaler):
@@ -47,8 +48,7 @@ class SuperImageModelYuvUpscaler(YuvUpscaler):
         upscaled_v = _upscale_array(self.model_x2, frame.v, channels=1)
 
         # Combine to RGB
-        yuv_array = cv2.merge((frame.y, upscaled_u, upscaled_v))
-        rgb_array = cv2.cvtColor(yuv_array, cv2.COLOR_YUV2RGB)
+        rgb_array = yuv_to_rgb(frame.color_space, frame.y, upscaled_u, upscaled_v)
 
         # Model works better at a smaller scale
         if self.resample_before_2nd_upscale:

@@ -1,4 +1,4 @@
-from typing import Iterator, Optional
+from typing import Iterable, Iterator, Optional
 from dataclasses import dataclass
 import subprocess, re, threading
 from collections import Counter
@@ -7,12 +7,24 @@ from tqdm import tqdm
 from datatypes import Frame
 
 
+def iter_frames(frame_indices: Iterable[int], *args, **kwargs) -> Iterator[tuple[int, Frame]]:
+    frame_indices = set(frame_indices)
+    last_frame_index = max(frame_indices)
+    with FfmpegVideoReader(*args, **kwargs) as reader:
+        for i, frame in enumerate(reader):
+            if i in frame_indices:
+                yield i, frame
+                if i == last_frame_index:
+                    break
+
+
 @dataclass
 class StreamSpecs:
     resolution: Optional[tuple[int]] = None
     duration_seconds: Optional[float] = None
     fps: Optional[float] = None
     pix_fmt: Optional[str] = None
+    color_space: Optional[str] = None
 
 
 class FfmpegVideoReader:
@@ -27,12 +39,13 @@ class FfmpegVideoReader:
             duration_seconds=self.input_specs.duration_seconds,
             fps=self.input_specs.fps,
             pix_fmt=pix_fmt,
+            color_space=self.input_specs.color_space,
         )
 
-        if self.output_specs.pix_fmt == "yuv420p" and self.input_specs.pix_fmt != "yuv420p":
+        if self.output_specs.pix_fmt in ["yuv420p", "yuvj420p"] and self.input_specs.pix_fmt not in ["yuv420p", "yuvj420p"]:
             print(
-                f"Warning: Output pixel format 'yuv420p' only makes sense with matching input pixel format. "
-                f"Detected input pixel format is '{self.input_specs.pix_fmt}'."
+                f"Warning: Output pixel format '{self.output_specs.pix_fmt}' only makes sense with matching input "
+                f"pixel format. Detected input pixel format is '{self.input_specs.pix_fmt}'."
             )
         
         self.stderr_thread = None
@@ -41,7 +54,7 @@ class FfmpegVideoReader:
     @property
     def num_frame_bytes(self):
         w, h = self.output_specs.resolution
-        if self.output_specs.pix_fmt == "yuv420p":
+        if self.output_specs.pix_fmt in ["yuv420p", "yuvj420p"]:
             return w * h + 2 * (w // 2) * (h // 2)
         if self.output_specs.pix_fmt == "rgb24":
             return w * h * 3
@@ -64,7 +77,7 @@ class FfmpegVideoReader:
             if not raw_frame:
                 break  # No more frames to read
 
-            if self.output_specs.pix_fmt == "yuv420p":
+            if self.output_specs.pix_fmt in ["yuv420p", "yuvj420p"]:
                 w, h = self.output_specs.resolution
                 y_size = w * h
                 u_size = (w // 2) * (h // 2)
@@ -73,11 +86,12 @@ class FfmpegVideoReader:
                 u = np.frombuffer(raw_frame[y_size : y_size + u_size], dtype=np.uint8).reshape((h // 2, w // 2))
                 v = np.frombuffer(raw_frame[y_size + u_size :], dtype=np.uint8).reshape((h // 2, w // 2))
 
-                frame = Frame(y=y, u=u, v=v)
+                frame = Frame(y=y, u=u, v=v, color_space=self.output_specs.color_space)
 
             elif self.output_specs.pix_fmt == "rgb24":
                 w, h = self.output_specs.resolution
-                frame = Frame(rgb=np.frombuffer(raw_frame, dtype=np.uint8).reshape((h, w, 3)))
+                rgb = np.frombuffer(raw_frame, dtype=np.uint8).reshape((h, w, 3))
+                frame = Frame(rgb=rgb, color_space=self.output_specs.color_space)
 
             else:
                 raise ValueError(f"Unknown pixel format: {self.output_specs.pix_fmt}")
@@ -89,7 +103,8 @@ class FfmpegVideoReader:
         return self
 
     def __exit__(self, _exc_type, _exc, _tb):
-        self.progressbar.close()
+        if self.progressbar:
+            self.progressbar.close()
         self.process.stdout.close()
         self.process.stderr.close()
         self.stderr_thread.join()
@@ -101,6 +116,7 @@ class FfmpegVideoReader:
         fps = None
         duration_seconds = None
         pix_fmt = "unknown"
+        color_space = None
 
         while not (line := self.process.stderr.readline().decode("utf-8")).startswith("Output #0"):
             # print(line)
@@ -115,7 +131,15 @@ class FfmpegVideoReader:
 
                 if "yuv420p" in line:
                     pix_fmt = "yuv420p"
+                if "yuvj420p" in line:
+                    pix_fmt = "yuvj420p"
                 print(f"Detected pix_fmt: {fps}")
+
+                if "bt709" in line:
+                    color_space = "bt709"
+                if "bt601" in line:
+                    color_space = "bt601"
+                print(f"Detected color space: {color_space}")
 
             if (m := re.match(r"\s*Duration:\s+(\d\d:\d\d:\d\d\.\d+),.+", line)):
                 duration = m[1]
@@ -129,6 +153,7 @@ class FfmpegVideoReader:
             duration_seconds=duration_seconds,
             fps=fps,
             pix_fmt=pix_fmt,
+            color_space=color_space,
         )
 
     def start_stderr_consumer_thread(self):

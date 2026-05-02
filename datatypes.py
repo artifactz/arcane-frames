@@ -23,3 +23,4 @@ class Frame:
     y: Optional[np.ndarray] = None
     u: Optional[np.ndarray] = None
     v: Optional[np.ndarray] = None
+    color_space: Optional[str] = None
