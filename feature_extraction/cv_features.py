@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Iterator
 import multiprocessing
 import numpy as np
 import cv2
@@ -6,7 +6,7 @@ from datatypes import FrameFeatures
 import ffmpeg
 
 
-def get_video_features(filename: str, crop: Optional[str] = None) -> list[FrameFeatures]:
+def iter_video_features(filename: str, crop: Optional[str] = None) -> Iterator[FrameFeatures]:
     with ffmpeg.FfmpegVideoReader(filename, crop=crop) as reader:
         gray_iter = (cv2.cvtColor(frame.rgb, cv2.COLOR_BGR2GRAY) for frame in reader)
 
@@ -16,7 +16,7 @@ def get_video_features(filename: str, crop: Optional[str] = None) -> list[FrameF
             enumerate(gray_iter)
         )
 
-        return list(features_iter)
+        return features_iter
 
 def calculate_frame_features(args) -> FrameFeatures:
     frame_index, gray = args

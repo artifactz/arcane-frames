@@ -1,5 +1,6 @@
 import os, functools, contextlib
-import db, ffmpeg, features
+import db, ffmpeg
+from feature_extraction import cv_features
 
 
 def scan(folder: str, overwrite=False, verbose=True):
@@ -15,7 +16,12 @@ def scan(folder: str, overwrite=False, verbose=True):
 
 def _scan(folder: str, overwrite=False):
     print(f"# Scanning {folder}\n")
-    for filename in get_video_paths(folder):
+    filenames = get_video_paths(folder)
+    if not filenames:
+        print("No video files found.")
+        return
+
+    for filename in filenames:
         print(f"## Processing {filename}\n")
         v = db.get_video(filename)
 
@@ -40,7 +46,7 @@ def _scan(folder: str, overwrite=False):
 
         frame_features = db.get_frame_features(filename)
         if not frame_features or frame_features[0].frame_type is None or overwrite:
-            print("* Extracting frame types", end="", flush=True)
+            print("* Detecting frame types", end="", flush=True)
             db.set_video_features(filename, frame_types=_frame_types())
             print(f" ({len(_frame_types())})")
         else:
@@ -62,7 +68,7 @@ def _scan(folder: str, overwrite=False):
             overwrite
         ):
             print(f"* Extracting frame features")
-            video_features = features.get_video_features(filename, crop)
+            video_features = list(cv_features.iter_video_features(filename, crop))
             nums_gftt = [f.num_gftt for f in video_features]
             nums_gftt_halfres = [f.num_gftt_halfres for f in video_features]
             laplace_means = [f.laplace_mean for f in video_features]
@@ -81,7 +87,6 @@ def get_video_paths(folder: str):
 
 
 if __name__ == "__main__":
-    db.ensure_videos_table()
-    db.ensure_frame_features_table()
+    db.ensure_tables()
     scan("episodes")
     db.dump_videos()
