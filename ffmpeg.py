@@ -1,6 +1,6 @@
 from typing import Iterable, Iterator, Optional
 from dataclasses import dataclass
-import subprocess, re, threading
+import subprocess, re, threading, os
 from collections import Counter
 import numpy as np
 from tqdm import tqdm
@@ -48,8 +48,10 @@ class FfmpegVideoReader:
                 f"pixel format. Detected input pixel format is '{self.input_specs.pix_fmt}'."
             )
         
+        self.stderr_bytes = bytes()
         self.stderr_thread = None
         self.progressbar = None
+        self.basename = os.path.basename(filename)
 
     @property
     def num_frame_bytes(self):
@@ -65,7 +67,7 @@ class FfmpegVideoReader:
 
         self.progressbar = tqdm(
             total=int(self.output_specs.duration_seconds * self.output_specs.fps),
-            desc="Reading video",
+            desc=f"Reading {self.basename}",
             unit=" frames",
         )
 
@@ -107,7 +109,8 @@ class FfmpegVideoReader:
             self.progressbar.close()
         self.process.stdout.close()
         self.process.stderr.close()
-        self.stderr_thread.join()
+        if self.stderr_thread:
+            self.stderr_thread.join()
         self.process.wait()
 
     def detect_input(self) -> StreamSpecs:
@@ -159,7 +162,10 @@ class FfmpegVideoReader:
     def start_stderr_consumer_thread(self):
         def consume_stderr():
             """Reads and discards stderr to prevent block due to filled-up buffer."""
-            while self.process.stderr.read(1024):
+            try:
+                while s := self.process.stderr.read(1024):
+                    self.stderr_bytes += s
+            except Exception:
                 pass
 
         t = threading.Thread(target=consume_stderr)
