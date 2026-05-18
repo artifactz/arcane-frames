@@ -49,7 +49,7 @@ class FfmpegVideoReader:
             )
         
         self.stderr_bytes = bytes()
-        self.stderr_thread = None
+        self.stderr_consumer = None
         self.progressbar = None
         self.basename = os.path.basename(filename)
 
@@ -71,7 +71,7 @@ class FfmpegVideoReader:
             unit=" frames",
         )
 
-        self.stderr_thread = self.start_stderr_consumer_thread()
+        self.stderr_consumer = StreamConsumer(self.process.stderr)
 
         while True:
             raw_frame = self.process.stdout.read(num_frame_bytes)
@@ -109,8 +109,8 @@ class FfmpegVideoReader:
             self.progressbar.close()
         self.process.stdout.close()
         self.process.stderr.close()
-        if self.stderr_thread:
-            self.stderr_thread.join()
+        if self.stderr_consumer:
+            self.stderr_consumer.join()
         self.process.wait()
 
     def detect_input(self) -> StreamSpecs:
@@ -136,7 +136,7 @@ class FfmpegVideoReader:
                     pix_fmt = "yuv420p"
                 if "yuvj420p" in line:
                     pix_fmt = "yuvj420p"
-                print(f"Detected pix_fmt: {fps}")
+                print(f"Detected pix_fmt: {pix_fmt}")
 
                 if "bt709" in line:
                     color_space = "bt709"
@@ -158,19 +158,6 @@ class FfmpegVideoReader:
             pix_fmt=pix_fmt,
             color_space=color_space,
         )
-
-    def start_stderr_consumer_thread(self):
-        def consume_stderr():
-            """Reads and discards stderr to prevent block due to filled-up buffer."""
-            try:
-                while s := self.process.stderr.read(1024):
-                    self.stderr_bytes += s
-            except Exception:
-                pass
-
-        t = threading.Thread(target=consume_stderr)
-        t.start()
-        return t
 
 
 def get_ffmpeg_reader_args(filename: str, pix_fmt: str = "rgb24", crop: Optional[str] = None):
@@ -239,6 +226,8 @@ def ffprobe_frame_types(filename) -> Iterator[str]:
         [
             "ffprobe",
             "-hide_banner",
+            "-threads",
+            "auto",
             "-select_streams",
             "v",
             "-show_entries",
@@ -249,6 +238,8 @@ def ffprobe_frame_types(filename) -> Iterator[str]:
         stderr=subprocess.PIPE,
     )
 
+    stderr_consumer = StreamConsumer(process.stderr)
+
     while (line := process.stdout.readline().decode("utf-8")):
         if line.startswith("pict_type="):
             frame_type = line.strip().split("=")[1]
@@ -256,4 +247,24 @@ def ffprobe_frame_types(filename) -> Iterator[str]:
 
     process.stdout.close()
     process.stderr.close()
+    stderr_consumer.join()
     process.wait()
+
+
+class StreamConsumer:
+    def __init__(self, stream):
+        self.stream = stream
+        self.content_bytes = bytes()
+        self.thread = threading.Thread(target=self._consume_stream_task)
+        self.thread.start()
+
+    def _consume_stream_task(self):
+        try:
+            while b := self.stream.read(1024):
+                self.content_bytes += b
+        except Exception:
+            pass
+
+    def join(self):
+        self.thread.join()
+        return self.content_bytes
