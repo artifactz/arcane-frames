@@ -68,7 +68,7 @@ def _scan(folder: str, overwrite=False):
             overwrite
         ):
             print(f"* Extracting frame features")
-            video_features = list(cv_features.iter_video_features(filename, crop))
+            video_features = cv_features.get_video_features(filename, crop)
             nums_gftt = [f.num_gftt for f in video_features]
             nums_gftt_halfres = [f.num_gftt_halfres for f in video_features]
             laplace_means = [f.laplace_mean for f in video_features]
