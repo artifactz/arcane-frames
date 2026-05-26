@@ -1,6 +1,6 @@
-import os, functools, contextlib
+import os, contextlib
 import db, ffmpeg
-from feature_extraction import cv_features
+from resnet_util import ensure_frame_quality
 
 
 def scan(folder: str, overwrite=False, verbose=True):
@@ -14,6 +14,7 @@ def scan(folder: str, overwrite=False, verbose=True):
         with contextlib.redirect_stdout(open(os.devnull, 'w')):
             _scan_with_args()
 
+
 def _scan(folder: str, overwrite=False):
     print(f"# Scanning {folder}\n")
     filenames = get_video_paths(folder)
@@ -23,58 +24,40 @@ def _scan(folder: str, overwrite=False):
 
     for filename in filenames:
         print(f"## Processing {filename}\n")
-        v = db.get_video(filename)
+        video = db.get_video(filename)
 
-        if not v or overwrite:
-            db.ensure_filename(filename)
+        if not video or overwrite:
+            video = db.ensure_filename(filename)
             print("* Created DB entry.")
         else:
             print("* DB entry exists.")
 
-        if not v or not v.crop or overwrite:
+        if not video or not video.crop or overwrite:
             print("* Detecting crop", end="", flush=True)
             crop = ffmpeg.ffmpeg_crop_detect(filename)
             db.set_crop(filename, crop)
-            print(f"={crop}")
         else:
-            crop = v.crop
-            print(f"* Crop in DB: {v.crop}")
+            print("* From DB crop", end="", flush=True)
+            crop = video.crop
+        print(f"={crop}")
 
-        @functools.cache
-        def _frame_types():
-            return list(ffmpeg.ffprobe_frame_types(filename))
-
-        frame_features = db.get_frame_features(filename)
-        if not frame_features or frame_features[0].frame_type is None or overwrite:
+        frame_types = db.get_frame_types(video._id)
+        if not frame_types or overwrite:
             print("* Detecting frame types", end="", flush=True)
-            db.set_video_features(filename, frame_types=_frame_types())
-            print(f" ({len(_frame_types())})")
+            frame_types = list(ffmpeg.ffprobe_frame_types(filename))
+            db.set_frame_types(video._id, frame_types)
+            db.set_num_frames(filename, len(frame_types))
         else:
-            print(f"* Frame types in DB ({len(frame_features)}).")
+            print(f"* Frame types from DB", end="", flush=True)
+        print(f" ({len(frame_types)})")
 
-        if not v or not v.num_frames or overwrite:
-            print("* Counting num_frames", end="", flush=True)
-            n = len(_frame_types())
-            db.set_num_frames(filename, n)
-            print(f"={n}")
+        frame_qualities = db.get_frame_qualities(video._id)
+        if not frame_qualities or len(frame_qualities) < len(frame_types) or overwrite:
+            print("* Estimating frame qualities")
+            ensure_frame_quality(filename, batch_size=64)
+            print("* Done estimating frame qualities")
         else:
-            print(f"* num_frames in DB: {v.num_frames}")
-
-        if (
-            not frame_features or
-            frame_features[0].num_gftt is None or
-            frame_features[0].num_gftt_halfres is None or
-            frame_features[0].laplace_mean is None or
-            overwrite
-        ):
-            print(f"* Extracting frame features")
-            video_features = cv_features.get_video_features(filename, crop)
-            nums_gftt = [f.num_gftt for f in video_features]
-            nums_gftt_halfres = [f.num_gftt_halfres for f in video_features]
-            laplace_means = [f.laplace_mean for f in video_features]
-            db.set_video_features(filename, nums_gftt=nums_gftt, nums_gftt_halfres=nums_gftt_halfres, laplace_means=laplace_means)
-        else:
-            print("* Frame features in DB.")
+            print(f"* Frame qualities from DB ({len(frame_qualities)}).")
 
         print()
 

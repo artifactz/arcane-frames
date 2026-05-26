@@ -10,14 +10,6 @@ class Video:
     crop: Optional[str] = None
 
 @dataclass
-class FrameFeatures:
-    frame_index: int
-    frame_type: Optional[str] = None
-    num_gftt: Optional[int] = None
-    num_gftt_halfres: Optional[int] = None
-    laplace_mean: Optional[float] = None
-
-@dataclass
 class Frame:
     rgb: Optional[np.ndarray] = None
     y: Optional[np.ndarray] = None

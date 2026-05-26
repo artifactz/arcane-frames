@@ -31,16 +31,15 @@ def _resample_1080p(array_or_image: np.ndarray | Image.Image) -> Image.Image:
 
 
 if __name__ == "__main__":
-    from frame_selection import select_frame_between_i_frames, score_nums_gftt_halfres, filter_frames_quality
-    from upscaling.diffusion import DiffusionUpscaler
-    from upscaling.onnx_model import OnnxModelUpscaler, OnnxModelYuvUpscaler
-    from upscaling.super_image_model import SuperImageModelUpscaler, SuperImageModelYuvUpscaler
+    from frame_selection import select_frame_between_i_frames#, score_nums_gftt_halfres, filter_frames_quality
+    # from upscaling.diffusion import DiffusionUpscaler as Upscaler
+    # from upscaling.onnx_model import OnnxModelUpscaler as Upscaler
+    from upscaling.onnx_model import OnnxModelYuvUpscaler as Upscaler
+    # from upscaling.super_image_model import SuperImageModelUpscaler as Upscaler
+    # from upscaling.super_image_model import SuperImageModelYuvUpscaler as Upscaler
 
-    # upscaler = DiffusionUpscaler()
-    # upscaler = SuperImageModelYuvUpscaler(4)
-    upscaler = OnnxModelYuvUpscaler(4)
+    upscaler = Upscaler(4)
 
     for video in db.get_videos():
-        indices = select_frame_between_i_frames(video.filename, score_func=score_nums_gftt_halfres)
-        indices = filter_frames_quality(video.filename, list(indices))
+        indices = select_frame_between_i_frames(video.filename)
         extract_images(video.filename, "export/images", upscaler, indices)

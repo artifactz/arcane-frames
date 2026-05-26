@@ -1,4 +1,5 @@
 from typing import Iterator
+from itertools import batched
 from PIL import Image
 import numpy as np
 import db, ffmpeg
@@ -25,3 +26,30 @@ def iter_frames_resnet(filename: str, indices: list[int]) -> Iterator[tuple[np.n
             cached_resnet[frame_index] = (embed, prob)
 
     return (cached_resnet[i] for i in indices)
+
+
+def ensure_frame_quality(filename: str, batch_size=64):
+    """
+    Ensures that all frames of the video have a quality estimation in the database.
+    """
+    from feature_extraction import resnet50
+    from quality_estimation import inference
+
+    video = db.get_video(filename)
+    available_indices = list(reversed(sorted([i for i, _ in db.get_frame_qualities(video._id)])))
+    if available_indices:
+        missing_indices = []
+        for i in range(video.num_frames):
+            if available_indices and i == available_indices[-1]:
+                available_indices.pop()
+            else:
+                missing_indices.append(i)
+    else:
+        missing_indices = None
+
+    for indexed_frames in batched(ffmpeg.buffered(ffmpeg.iter_frames(missing_indices, filename, crop=video.crop), batch_size), batch_size):
+        batch = [Image.fromarray(frame.rgb) for _, frame in indexed_frames]
+        embeds, probs = resnet50.from_images(batch)
+        qualities = inference.from_resnets(embeds, probs)
+        for i, (frame_index, _) in enumerate(indexed_frames):
+            db.set_frame_quality(video._id, frame_index, qualities[i])

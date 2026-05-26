@@ -23,8 +23,11 @@ categories = torchvision.models.ResNet50_Weights.DEFAULT.meta["categories"]
 
 
 def from_image(image):
-    input_tensor: torch.Tensor = transform(image)
-    input_batch = torch.stack([input_tensor]).to(device)
+    embed, prob = from_images([image])
+    return embed[0], prob[0]
+
+def from_images(images):
+    input_batch = torch.stack([transform(image) for image in images]).to(device)
 
     with torch.no_grad():
         embeddings = feature_extractor(input_batch)
@@ -32,4 +35,4 @@ def from_image(image):
         outputs = model.fc(embeddings)
         probabilities = F.softmax(outputs, dim=1)
 
-    return embeddings.cpu().numpy()[0], probabilities.cpu().numpy()[0]
+    return embeddings.cpu().numpy(), probabilities.cpu().numpy()

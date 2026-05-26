@@ -1,20 +1,53 @@
 from typing import Iterable, Iterator, Optional
 from dataclasses import dataclass
-import subprocess, re, threading, os
+import subprocess, re, threading, queue, os
 from collections import Counter
 import numpy as np
 from tqdm import tqdm
 from datatypes import Frame
 
 
-def iter_frames(frame_indices: Iterable[int], *args, **kwargs) -> Iterator[tuple[int, Frame]]:
-    frame_indices = set(frame_indices)
-    last_frame_index = max(frame_indices)
+def buffered(iterable: Iterable, buffer_size: int = 64) -> Iterator:
+    """
+    Buffers an iterable in a separate thread to allow for faster consumption. Useful for buffering frames read from ffmpeg.
+
+    Args:
+        iterable: The iterable to buffer.
+        buffer_size: The maximum number of items to buffer.
+    """
+    buffer_queue = queue.Queue(buffer_size)
+    queue_end = object()
+
+    def _producer_worker():
+        for item in iterable:
+            buffer_queue.put(item)
+        buffer_queue.put(queue_end)
+
+    producer_thread = threading.Thread(target=_producer_worker)
+    producer_thread.start()
+
+    while (item := buffer_queue.get()) is not queue_end:
+        yield item
+    producer_thread.join()
+
+
+def iter_frames(frame_indices: Iterable[int] | None = None, *args, **kwargs) -> Iterator[tuple[int, Frame]]:
+    """
+    Iterates over frames of a video specified by args and kwargs (passed to FfmpegVideoReader) and yields tuples
+    of (frame_index, Frame).
+
+    Args:
+        frame_indices: Optional iterable of frame indices to yield. If None, yields all frames.
+    """
+    if frame_indices:
+        frame_indices = sorted(frame_indices, reverse=True)
     with FfmpegVideoReader(*args, **kwargs) as reader:
         for i, frame in enumerate(reader):
-            if i in frame_indices:
+            if not frame_indices or i == frame_indices[-1]:
                 yield i, frame
-                if i == last_frame_index:
+                if frame_indices:
+                    frame_indices.pop()
+                if frame_indices and len(frame_indices) == 0:
                     break
 
 
@@ -28,7 +61,16 @@ class StreamSpecs:
 
 
 class FfmpegVideoReader:
+    """
+    Uses ffmpeg to read video frames as raw bytes and yields them as numpy arrays.
+    """
     def __init__(self, filename: str, pix_fmt: str = "rgb24", crop: Optional[str] = None):
+        """
+        Args:
+            filename: Path to the video file.
+            pix_fmt: Pixel format to request from ffmpeg ("rgb24", "yuv420p", "yuvj420p").
+            crop: Optional crop filter string (e.g., "640:480:0:0").
+        """
         args = get_ffmpeg_reader_args(filename, pix_fmt=pix_fmt, crop=crop)
         self.process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -69,6 +111,7 @@ class FfmpegVideoReader:
             total=int(self.output_specs.duration_seconds * self.output_specs.fps),
             desc=f"Reading {self.basename}",
             unit=" frames",
+            smoothing=0.05,
         )
 
         self.stderr_consumer = StreamConsumer(self.process.stderr)
